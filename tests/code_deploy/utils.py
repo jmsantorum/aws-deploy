@@ -86,6 +86,67 @@ DEPLOYMENT_GROUP_PAYLOAD = {
     }
 }
 
+DEPLOYMENT_GROUP_PAYLOAD_2 = {
+    'deploymentGroupInfo': {
+        'applicationName': APPLICATION_NAME,
+        'deploymentGroupId': '112bc71b-86a5-481d-a9b4-6870019928f1',
+        'deploymentGroupName': DEPLOYMENT_GROUP_NAME,
+        'deploymentConfigName': 'CodeDeployDefault.ECSAllAtOnce',
+        'ec2TagFilters': [],
+        'onPremisesInstanceTagFilters': [],
+        'autoScalingGroups': [],
+        'serviceRoleArn': 'arn:aws:iam::123456789012:role/code_deploy_service_role',
+        'targetRevision': {
+            'revisionType': 'String',
+            'string': {'sha256': 'ca50d13af7bc8d4ea4f6600dfd82e38b41a0a14bd5edf242464eb025895f0bc9'}
+        },
+        'triggerConfigurations': [],
+        'autoRollbackConfiguration': {'enabled': True, 'events': ['DEPLOYMENT_FAILURE']},
+        'deploymentStyle': {
+            'deploymentType': 'BLUE_GREEN',
+            'deploymentOption': 'WITH_TRAFFIC_CONTROL'
+        },
+        'blueGreenDeploymentConfiguration': {
+            'terminateBlueInstancesOnDeploymentSuccess': {
+                'action': 'TERMINATE',
+                'terminationWaitTimeInMinutes': 1
+            },
+            'deploymentReadyOption': {
+                'actionOnTimeout': 'CONTINUE_DEPLOYMENT',
+                'waitTimeInMinutes': 0
+            }
+        },
+        'loadBalancerInfo': {
+            'targetGroupPairInfoList': [
+                {
+                    'targetGroups': [
+                        {'name': 'blue-green-tg-one'}, {'name': 'blue-green-tg-two'}
+                    ],
+                    'prodTrafficRoute': {
+                        'listenerArns': [
+                            'arn:aws:elasticloadbalancing:eu-west-1:123456789012:listener/app/test-app/12345678'
+                        ]
+                    }
+                }
+            ]
+        },
+        'lastSuccessfulDeployment': {
+            'deploymentId': DEPLOYMENT_ID,
+            'status': 'Succeeded',
+            'endTime': datetime(2020, 1, 1, 1, 1),
+            'createTime': datetime(2020, 1, 1, 1, 0)
+        },
+        'lastAttemptedDeployment': {
+            'deploymentId': DEPLOYMENT_ID,
+            'status': 'Succeeded',
+            'endTime': datetime(2020, 1, 1, 1, 1),
+            'createTime': datetime(2020, 1, 1, 1, 0)
+        },
+        'computePlatform': 'ECS',
+        'ecsServices': [{'serviceName': 'test-service', 'clusterName': 'test-cluster'}]
+    }
+}
+
 APPLICATION_REVISION_PAYLOAD = {
     'applicationName': APPLICATION_NAME,
     'revision': {

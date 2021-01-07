@@ -7,8 +7,8 @@ from aws_deploy.code_deploy.helper import (
     CodeDeployClient, UnknownTaskDefinitionError, CodeDeployDeploymentGroup, CodeDeployRevision
 )
 from tests.code_deploy.utils import (
-    DEPLOYMENT_ID, APPLICATION_PAYLOAD, DEPLOYMENT_GROUP_PAYLOAD, APPLICATION_REVISION_PAYLOAD, TASK_DEFINITION_PAYLOAD,
-    DEPLOYMENT_PAYLOAD
+    DEPLOYMENT_ID, APPLICATION_PAYLOAD, DEPLOYMENT_GROUP_PAYLOAD, DEPLOYMENT_GROUP_PAYLOAD_2,
+    APPLICATION_REVISION_PAYLOAD, TASK_DEFINITION_PAYLOAD, DEPLOYMENT_PAYLOAD
 )
 
 
@@ -69,6 +69,23 @@ def test_client_get_application_revision(client: CodeDeployClient):
         revision={
             'revisionType': deployment_group.target_revision['revisionType'],
             'appSpecContent': deployment_group.target_revision['appSpecContent']
+        }
+    )
+
+
+def test_client_get_application_revision_2(client: CodeDeployClient):
+    deployment_group = CodeDeployDeploymentGroup(
+        **DEPLOYMENT_GROUP_PAYLOAD_2['deploymentGroupInfo']
+    )
+
+    client._code_deploy.get_application_revision.return_value = APPLICATION_REVISION_PAYLOAD
+
+    client.get_application_revision('test-application', deployment_group)
+    client._code_deploy.get_application_revision.assert_called_once_with(
+        applicationName='test-application',
+        revision={
+            'revisionType': deployment_group.target_revision['revisionType'],
+            'string': deployment_group.target_revision['string']
         }
     )
 

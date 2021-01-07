@@ -36,6 +36,63 @@ class CodeDeployDeploymentGroup:
         self.target_revision = targetRevision
 
 
+class CodeDeployString:
+    def __init__(self, string):
+        content_raw = string.get('content', '{}')
+        sha256_raw = string.get('sha256', hashlib.sha256(content_raw.encode()).hexdigest())
+
+        self.content_json = json.loads(content_raw)
+        self.sha256 = sha256_raw
+        self._diff = []
+
+    @property
+    def updated(self) -> bool:
+        return self._diff != []
+
+    def show_diff(self, show_diff: bool = False):
+        if show_diff:
+            click.secho('String modified:')
+            for diff in self._diff:
+                click.secho(f'    {str(diff)}', fg='blue')
+            click.secho('')
+
+    def to_dict(self):
+        content_str = json.dumps(self.content_json, separators=(',', ':'))
+        sha256 = hashlib.sha256(content_str.encode()).hexdigest()
+
+        return {
+            'content': content_str,
+            'sha256': sha256
+        }
+
+    def get_task_definitions(self):
+        task_definitions = list()
+
+        for resource in self.content_json['Resources']:
+            target_service = resource['TargetService']
+            properties = target_service['Properties']
+
+            task_definitions.append(properties['TaskDefinition'])
+
+        return task_definitions
+
+    def get_task_definition(self, position: int = 0):
+        task_definitions = self.get_task_definitions()
+
+        return task_definitions[position]
+
+    def set_task_definition(self, new_task_definition: EcsTaskDefinition):
+        for resource in self.content_json['Resources']:
+            target_service = resource['TargetService']
+            properties = target_service['Properties']
+
+            old_task_definition = properties['TaskDefinition']
+            if new_task_definition.arn != old_task_definition:
+                diff = Diff(field='TaskDefinition', value=new_task_definition.arn, old_value=old_task_definition)
+                self._diff.append(diff)
+                properties['TaskDefinition'] = new_task_definition.arn
+
+
 class CodeDeployAppSpecContent:
     def __init__(self, app_spec_content):
         content_raw = app_spec_content.get('content', '{}')
@@ -98,16 +155,26 @@ class CodeDeployRevision:
         self.revision_type = revisionType
         self.s3_location = s3Location
         self.github_location = gitHubLocation
-        self.string = string
-        self.app_spec_content: CodeDeployAppSpecContent = CodeDeployAppSpecContent(appSpecContent)
+        self.string: CodeDeployString = CodeDeployString(string) if self.revision_type == 'String' else None
+        self.app_spec_content: CodeDeployAppSpecContent = (
+            CodeDeployAppSpecContent(appSpecContent) if self.revision_type == 'AppSpecContent' else None
+        )
         self._diff = []
 
-        if self.revision_type not in ['AppSpecContent']:
+        if self.revision_type not in ['String', 'AppSpecContent']:
             raise NotSupportedError(f"Revision type '{self.revision_type}' not supported!")
 
     @property
     def updated(self) -> bool:
-        return self._diff != [] or self.app_spec_content.updated
+        updated = self._diff != []
+
+        if self.string:
+            updated |= self.string.updated
+
+        if self.app_spec_content:
+            updated |= self.app_spec_content.updated
+
+        return updated
 
     def show_diff(self, show_diff: bool = False):
         if show_diff:
@@ -116,7 +183,11 @@ class CodeDeployRevision:
                 click.secho(f'    {str(diff)}', fg='blue')
             click.secho('')
 
-            self.app_spec_content.show_diff(show_diff=show_diff)
+            if self.string:
+                self.string.show_diff(show_diff=show_diff)
+
+            if self.app_spec_content:
+                self.app_spec_content.show_diff(show_diff=show_diff)
 
     def to_dict(self):
         result = {'revisionType': self.revision_type}
@@ -128,7 +199,7 @@ class CodeDeployRevision:
             result['gitHubLocation'] = self.github_location
 
         if self.string:
-            result['string'] = self.string
+            result['string'] = self.string.to_dict()
 
         if self.app_spec_content:
             result['appSpecContent'] = self.app_spec_content.to_dict()
@@ -136,7 +207,20 @@ class CodeDeployRevision:
         return result
 
     def set_task_definition(self, new_task_definition: EcsTaskDefinition):
-        self.app_spec_content.set_task_definition(new_task_definition=new_task_definition)
+        if self.string:
+            self.string.set_task_definition(new_task_definition=new_task_definition)
+        elif self.app_spec_content:
+            self.app_spec_content.set_task_definition(new_task_definition=new_task_definition)
+
+    def get_task_definition(self):
+        if self.string:
+            current_task_definition = self.string.get_task_definition()
+        elif self.app_spec_content:
+            current_task_definition = self.app_spec_content.get_task_definition()
+        else:
+            current_task_definition = None
+
+        return current_task_definition
 
 
 class CodeDeployApplicationRevision:
@@ -222,10 +306,7 @@ class CodeDeployClient:
                                  deployment_group: CodeDeployDeploymentGroup) -> CodeDeployApplicationRevision:  # noqa E501
         application_revision_payload = self._code_deploy.get_application_revision(
             applicationName=application_name,
-            revision={
-                'revisionType': deployment_group.target_revision['revisionType'],
-                'appSpecContent': deployment_group.target_revision['appSpecContent']
-            }
+            revision=deployment_group.target_revision
         )
 
         return CodeDeployApplicationRevision(

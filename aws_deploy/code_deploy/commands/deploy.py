@@ -47,9 +47,7 @@ def deploy(ctx, application_name, deployment_group_name, task_definition, tag_on
         if task_definition:
             task_definition_arn = task_definition
         else:
-            app_spec_content = application_revision.revision.app_spec_content
-            current_task_definition = app_spec_content.get_task_definition()
-            task_definition_arn = current_task_definition
+            task_definition_arn = application_revision.revision.get_task_definition()
 
         task_definition = code_deploy_client.get_task_definition(task_definition_arn=task_definition_arn)
 
