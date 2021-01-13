@@ -365,7 +365,7 @@ class CodeDeployClient:
 
         return EcsTaskDefinition(**new_task_definition_payload['taskDefinition'])
 
-    def deregister_task_definition(self, task_definition_arn):
+    def deregister_task_definition(self, task_definition_arn: str):
         return self._ecs.deregister_task_definition(
             taskDefinition=task_definition_arn
         )

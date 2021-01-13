@@ -15,9 +15,11 @@ from aws_deploy.code_deploy.helper import CodeDeployError, CodeDeployDeployment
 @click.option('--tag-only', help='New tag to apply to ALL images defined in the task (multi-container task). If provided this will override value specified in image name argument.')  # noqa: E501
 @click.option('--timeout', default=300, type=int, show_default=True, help='Amount of seconds to wait for deployment before command fails. To disable timeout (fire and forget) set to -1.')  # noqa: E501
 @click.option('--sleep-time', default=1, type=int, show_default=True, help='Amount of seconds to wait between each check of the service.')  # noqa: E501
+@click.option('--deregister/--no-deregister', default=True, show_default=True, help='Deregister or keep the old task definition.')  # noqa: E501
 @click.option('--show-diff/--no-diff', default=True, show_default=True, help='Print which values were changed in the task definition')  # noqa: E501
 @click.pass_context
-def deploy(ctx, application_name, deployment_group_name, task_definition, tag_only, timeout, sleep_time, show_diff):
+def deploy(ctx, application_name, deployment_group_name, task_definition, tag_only, timeout, sleep_time, deregister,
+           show_diff):
     """
     Deploys an application revision through the specified deployment group.
 
@@ -82,6 +84,13 @@ def deploy(ctx, application_name, deployment_group_name, task_definition, tag_on
             timeout=timeout,
             sleep_time=sleep_time
         )
+
+        if deregister and task_definition.updated:
+            click.secho(f'Deregister task definition revision: {task_definition.revision}')
+
+            code_deploy_client.deregister_task_definition(task_definition.arn)
+
+            click.secho(f'Successfully deregistered revision: {task_definition.revision}', fg='green')
 
     except CodeDeployError as e:
         click.secho(str(e), fg='red', err=True)
