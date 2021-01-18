@@ -245,6 +245,11 @@ class EcsTaskDefinition(object):
             yield container['name']
 
     @property
+    def images(self):
+        for container in self.containers:
+            yield container['name'], container['image']
+
+    @property
     def family_revision(self):
         return f'{self.family}:{self.revision}'
 

@@ -16,10 +16,11 @@ from aws_deploy.code_deploy.helper import CodeDeployError, CodeDeployDeployment
 @click.option('--timeout', default=300, type=int, show_default=True, help='Amount of seconds to wait for deployment before command fails. To disable timeout (fire and forget) set to -1.')  # noqa: E501
 @click.option('--sleep-time', default=1, type=int, show_default=True, help='Amount of seconds to wait between each check of the service.')  # noqa: E501
 @click.option('--deregister/--no-deregister', default=True, show_default=True, help='Deregister or keep the old task definition.')  # noqa: E501
+@click.option('--skip-latest-tag', is_flag=True, default=True, show_default=True, help='Skip images with latest tag.')  # noqa: E501
 @click.option('--show-diff/--no-diff', default=True, show_default=True, help='Print which values were changed in the task definition')  # noqa: E501
 @click.pass_context
 def deploy(ctx, application_name, deployment_group_name, task_definition, tag_only, timeout, sleep_time, deregister,
-           show_diff):
+           skip_latest_tag, show_diff):
     """
     Deploys an application revision through the specified deployment group.
 
@@ -55,6 +56,24 @@ def deploy(ctx, application_name, deployment_group_name, task_definition, tag_on
 
         # update task definition
         task_definition.set_images(tag=tag_only)
+
+        if skip_latest_tag:
+            current_task_definition = code_deploy_client.get_task_definition(
+                task_definition_arn=application_revision.revision.get_task_definition()
+            )
+            current_images = {container: image for container, image in current_task_definition.images}
+
+            for container_name, image in task_definition.images:
+                image_tag = image.rsplit(':', 1)[1]
+                if image_tag == 'latest':
+                    current_image = current_images[container_name]
+                    current_tag = current_image.rsplit(':', 1)[1]
+
+                    if current_tag != 'latest':
+                        click.secho(f'Replace "latest" tag for "{container_name}" image with "{current_tag}"')
+                        task_definition.set_images(**{container_name: current_image})
+                    else:
+                        raise CodeDeployError(f'Cannot replace "latest" tag for "{container_name}"')
 
         if task_definition.updated:
             task_definition.show_diff(show_diff=show_diff)
