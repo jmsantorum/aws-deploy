@@ -55,6 +55,9 @@ def deploy(ctx, application_name, deployment_group_name, task_definition, module
 
         task_definition = code_deploy_client.get_task_definition(task_definition_arn=task_definition_arn)
 
+        if not module_version:
+            module_version = task_definition.get_tag('ModuleVersion')
+
         if module_version:
             task_definition = code_deploy_client.get_task_definition_filtered(
                 family=task_definition.family, module_version=module_version
