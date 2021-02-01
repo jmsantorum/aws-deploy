@@ -62,6 +62,7 @@ def deploy(ctx, application_name, deployment_group_name, task_definition, module
 
         # update task definition
         task_definition.set_images(tag=tag_only)
+        task_definition.set_tag('Terraform', 'false')
 
         if skip_latest_tag:
             current_task_definition = code_deploy_client.get_task_definition(

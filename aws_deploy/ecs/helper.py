@@ -352,6 +352,35 @@ class EcsTaskDefinition(object):
     def get_overrides_secrets(secrets):
         return [{"name": s, "valueFrom": secrets[s]} for s in secrets]
 
+    def get_tag(self, key):
+        for tag in self.tags:
+            if tag['key'] == key:
+                return tag['value']
+
+        return None
+
+    def set_tag(self, key: str, value: str):
+        if key and value:
+            done = False
+            for tag in self.tags:
+                if tag['key'] == key:
+                    if tag['value'] != value:
+                        diff = EcsTaskDefinitionDiff(
+                            container=None,
+                            field=f"tags['{key}']",
+                            value=value,
+                            old_value=tag['value']
+                        )
+                        self._diff.append(diff)
+                        tag['value'] = value
+                    done = True
+                    break
+
+            if not done:
+                diff = EcsTaskDefinitionDiff(container=None, field=f"tags['{key}']", value=value, old_value=None)
+                self._diff.append(diff)
+                self.tags.append({'key': key, 'value': value})
+
     def set_images(self, tag=None, **images):
         self.validate_container_options(**images)
         for container in self.containers:
