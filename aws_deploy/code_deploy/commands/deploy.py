@@ -16,7 +16,7 @@ from aws_deploy.code_deploy.helper import CodeDeployError, CodeDeployDeployment
 @click.option('--tag-only', help='New tag to apply to ALL images defined in the task (multi-container task). If provided this will override value specified in image name argument.')  # noqa: E501
 @click.option('--timeout', default=300, type=int, show_default=True, help='Amount of seconds to wait for deployment before command fails. To disable timeout (fire and forget) set to -1.')  # noqa: E501
 @click.option('--sleep-time', default=1, type=int, show_default=True, help='Amount of seconds to wait between each check of the service.')  # noqa: E501
-@click.option('--deregister/--no-deregister', default=True, show_default=True, help='Deregister or keep the old task definition.')  # noqa: E501
+@click.option('--deregister/--no-deregister', default=False, show_default=True, help='Deregister or keep the old task definition.')  # noqa: E501
 @click.option('--skip-latest-tag', is_flag=True, default=True, show_default=True, help='Skip images with latest tag.')  # noqa: E501
 @click.option('--show-diff/--no-diff', default=True, show_default=True, help='Print which values were changed in the task definition')  # noqa: E501
 @click.pass_context
