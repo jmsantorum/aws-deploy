@@ -5,6 +5,7 @@ import click
 from boto3 import Session
 from boto3_type_annotations import codedeploy
 from boto3_type_annotations import ecs
+from boto3_type_annotations import resourcegroupstaggingapi
 from botocore.exceptions import ClientError
 
 from aws_deploy.ecs.helper import EcsTaskDefinition
@@ -282,6 +283,7 @@ class CodeDeployClient:
 
         self._code_deploy: codedeploy.Client = session.client('codedeploy')
         self._ecs: ecs.Client = session.client('ecs')
+        self._resource_tagging: resourcegroupstaggingapi.Client = session.client('resourcegroupstaggingapi')
 
     def get_application(self, application_name: str) -> CodeDeployApplication:
         application_payload = self._code_deploy.get_application(
@@ -312,6 +314,24 @@ class CodeDeployClient:
         return CodeDeployApplicationRevision(
             **application_revision_payload
         )
+
+    def get_task_definition_filtered(self, family: str, module_version: str):
+        response_payload = self._resource_tagging.get_resources(
+            ResourceTypeFilters=['ecs:task-definition'],
+            TagFilters=[
+                {'Key': 'Family', 'Values': [family]},
+                {'Key': 'ModuleVersion', 'Values': [module_version]}
+            ]
+        )
+
+        task_definition_arns = sorted(
+            [item['ResourceARN'] for item in response_payload['ResourceTagMappingList']], reverse=True
+        )
+
+        if task_definition_arns:
+            return self.get_task_definition(task_definition_arn=task_definition_arns[0])
+
+        raise UnknownTaskDefinitionError(f'Task not found [Family={family}, ModuleVersion={module_version}]')
 
     def get_task_definition(self, task_definition_arn: str) -> EcsTaskDefinition:
         try:
