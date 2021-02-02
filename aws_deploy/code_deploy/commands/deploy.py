@@ -80,6 +80,7 @@ def deploy(ctx, application_name, deployment_group_name, task_definition, module
             click.secho('ModuleVersion not present, skipping it')
 
         click.secho(f"Using [task='{task_definition.arn}', ModuleVersion='{task_definition.get_tag('ModuleVersion')}']")
+        application_revision.set_task_definition(new_task_definition=task_definition)
 
         # update task definition
         task_definition.set_images(tag=tag_only)

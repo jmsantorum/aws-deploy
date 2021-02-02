@@ -167,7 +167,7 @@ APPLICATION_REVISION_PAYLOAD = {
 
 TASK_DEFINITION_PAYLOAD = {
     'taskDefinition': {
-        'taskDefinitionArn': 'arn:aws:ecs:eu-west-1:123456789012:task-definition/test-task-1',
+        'taskDefinitionArn': 'arn:aws:ecs:eu-west-1:123456789012:task-definition/test-task:1',
         'containerDefinitions': [
             {
                 'name': 'container-name',
