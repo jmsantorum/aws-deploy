@@ -316,11 +316,18 @@ class CodeDeployClient:
         )
 
     def get_task_definition_filtered(self, family: str, module_version: str):
+        mayor_minor_version, patch_version = module_version.rsplit('.', 1)
+
+        compatible_module_versions = [
+            f'{mayor_minor_version}.{next_patch_version}'
+            for next_patch_version in range(int(patch_version), int(patch_version) + 10)
+        ]
+
         response_payload = self._resource_tagging.get_resources(
             ResourceTypeFilters=['ecs:task-definition'],
             TagFilters=[
                 {'Key': 'Family', 'Values': [family]},
-                {'Key': 'ModuleVersion', 'Values': [module_version]}
+                {'Key': 'ModuleVersion', 'Values': compatible_module_versions}
             ]
         )
 
