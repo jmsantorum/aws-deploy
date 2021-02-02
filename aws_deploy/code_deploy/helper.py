@@ -316,6 +316,7 @@ class CodeDeployClient:
         )
 
     def get_task_definition_filtered(self, family: str, module_version: str):
+        click.secho(f'Required Task [Family={family}, ModuleVersion={module_version}]')
         mayor_minor_version, patch_version = module_version.rsplit('.', 1)
 
         compatible_module_versions = [
@@ -336,6 +337,9 @@ class CodeDeployClient:
         )
 
         if task_definition_arns:
+            task_definition = self.get_task_definition(task_definition_arn=task_definition_arns[0])
+            module_version = task_definition.get_tag('ModuleVersion')
+            click.secho(f'Found Task [Family={family}, ModuleVersion={module_version}]')
             return self.get_task_definition(task_definition_arn=task_definition_arns[0])
 
         raise UnknownTaskDefinitionError(f'Task not found [Family={family}, ModuleVersion={module_version}]')
