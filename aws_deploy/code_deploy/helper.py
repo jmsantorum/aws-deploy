@@ -1,5 +1,6 @@
 import hashlib
 import json
+from typing import List
 
 import click
 from boto3 import Session
@@ -66,7 +67,7 @@ class CodeDeployString:
             'sha256': sha256
         }
 
-    def get_task_definitions(self):
+    def get_task_definitions(self) -> List[str]:
         task_definitions = list()
 
         for resource in self.content_json['Resources']:
@@ -77,7 +78,7 @@ class CodeDeployString:
 
         return task_definitions
 
-    def get_task_definition(self, position: int = 0):
+    def get_task_definition(self, position: int = 0) -> str:
         task_definitions = self.get_task_definitions()
 
         return task_definitions[position]
@@ -123,7 +124,7 @@ class CodeDeployAppSpecContent:
             'sha256': sha256
         }
 
-    def get_task_definitions(self):
+    def get_task_definitions(self) -> List[str]:
         task_definitions = list()
 
         for resource in self.content_json['Resources']:
@@ -134,7 +135,7 @@ class CodeDeployAppSpecContent:
 
         return task_definitions
 
-    def get_task_definition(self, position: int = 0):
+    def get_task_definition(self, position: int = 0) -> str:
         task_definitions = self.get_task_definitions()
 
         return task_definitions[position]
