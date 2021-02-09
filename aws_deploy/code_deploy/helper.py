@@ -334,7 +334,9 @@ class CodeDeployClient:
         )
 
         task_definition_arns = sorted(
-            [item['ResourceARN'] for item in response_payload['ResourceTagMappingList']], reverse=True
+            [item['ResourceARN'] for item in response_payload['ResourceTagMappingList']],
+            key=lambda x: int(x.rsplit(':', 1)[1]),  # sort by (int) version
+            reverse=True
         )
 
         if task_definition_arns:
