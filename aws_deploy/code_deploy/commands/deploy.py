@@ -139,12 +139,13 @@ def deploy(ctx, application_name, deployment_group_name, task_definition, module
             sleep_time=sleep_time
         )
 
-        if deregister and task_definition.updated:
-            click.secho(f'Deregister task definition revision: {task_definition.revision}')
-
-            code_deploy_client.deregister_task_definition(task_definition.arn)
-
-            click.secho(f'Successfully deregistered revision: {task_definition.revision}', fg='green')
+        # TODO define which task we want to deregister
+        # if deregister and task_definition.updated:
+        #     click.secho(f'Deregister task definition revision: {task_definition.revision}')
+        #
+        #     code_deploy_client.deregister_task_definition(task_definition.arn)
+        #
+        #     click.secho(f'Successfully deregistered revision: {task_definition.revision}', fg='green')
 
     except CodeDeployError as e:
         click.secho(str(e), fg='red', err=True)
