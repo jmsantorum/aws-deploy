@@ -52,7 +52,10 @@ def deploy(ctx, application_name, deployment_group_name, task_definition, module
         application_revision = code_deploy_client.get_application_revision(
             application_name=application.application_name, deployment_group=deployment_group
         )
-        click.secho(f'[RevisionType={application_revision.revision.revision_type}]')
+        if application_revision:
+            click.secho(f'[RevisionType={application_revision.revision.revision_type}]')
+        else:
+            click.secho('Not Found!')
 
         # check task definition
         if task_definition:
@@ -60,9 +63,14 @@ def deploy(ctx, application_name, deployment_group_name, task_definition, module
             current_task_definition_arn = None
         else:
             click.secho('Task definition not present, fetching it -> ', nl=False)
-            requested_task_definition_arn = application_revision.revision.get_task_definition()
-            current_task_definition_arn = requested_task_definition_arn
-            click.secho(f'{requested_task_definition_arn}')
+
+            if application_revision:
+                requested_task_definition_arn = application_revision.revision.get_task_definition()
+                current_task_definition_arn = requested_task_definition_arn
+                click.secho(f'{requested_task_definition_arn}')
+            else:
+                click.secho('Not Found!')
+                raise CodeDeployError('Task definition not present, cannot continue! First deployment?')
 
         requested_task_definition = code_deploy_client.get_task_definition(
             task_definition_arn=requested_task_definition_arn

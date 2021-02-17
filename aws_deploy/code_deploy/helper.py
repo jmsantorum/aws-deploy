@@ -1,6 +1,6 @@
 import hashlib
 import json
-from typing import List
+from typing import List, Optional
 
 import click
 from boto3 import Session
@@ -29,8 +29,8 @@ class CodeDeployApplication:
 
 
 class CodeDeployDeploymentGroup:
-    def __init__(self, applicationName, deploymentGroupId, deploymentGroupName, deploymentConfigName, targetRevision,
-                 **kwargs):
+    def __init__(self, applicationName, deploymentGroupId, deploymentGroupName, deploymentConfigName,
+                 targetRevision=None, **kwargs):
         self.application_name = applicationName
         self.deployment_group_id = deploymentGroupId
         self.deployment_group_name = deploymentGroupName
@@ -305,8 +305,10 @@ class CodeDeployClient:
             **deployment_group_payload['deploymentGroupInfo']
         )
 
-    def get_application_revision(self, application_name: str,
-                                 deployment_group: CodeDeployDeploymentGroup) -> CodeDeployApplicationRevision:  # noqa E501
+    def get_application_revision(self, application_name: str, deployment_group: CodeDeployDeploymentGroup) -> Optional[CodeDeployApplicationRevision]:  # noqa E501
+        if not deployment_group.target_revision:
+            return None
+
         application_revision_payload = self._code_deploy.get_application_revision(
             applicationName=application_name,
             revision=deployment_group.target_revision

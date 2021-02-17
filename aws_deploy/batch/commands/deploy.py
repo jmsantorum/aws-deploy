@@ -6,7 +6,7 @@ from aws_deploy.batch.helper import BatchError
 
 @batch_cli.command()
 @click.argument('job-definition-name')
-@click.option('--tag',  help='New tag to apply to the image defined in the job definition')
+@click.option('--tag', help='New tag to apply to the image defined in the job definition')
 @click.option('--deregister/--no-deregister', default=False, show_default=True, help='Deregister or keep the old task definition.')  # noqa: E501
 @click.option('--skip-latest-tag', is_flag=True, default=True, show_default=True, help='Skip images with latest tag.')
 @click.option('--show-diff/--no-diff', default=True, show_default=True, help='Print which values were changed in the task definition')  # noqa: E501
