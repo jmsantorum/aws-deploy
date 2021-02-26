@@ -37,53 +37,66 @@ def deploy(ctx, application_name, deployment_group_name, task_definition, module
         click.secho(f'Deploy [application_name={application_name}, deployment_group_name={deployment_group_name}]')
         code_deploy_client = get_code_deploy_client(ctx)
 
-        # retrieve current application revision
+        # fetch application
         click.secho(f'Fetching application [application_name={application_name}] -> ', nl=False)
         application = code_deploy_client.get_application(application_name=application_name)
-        click.secho(f'{application.application_id}')
+        click.secho(f'{application.application_id}', fg='green')
 
+        # fetch deployment group
         click.secho(f'Fetching deployment_group [deployment_group_name={deployment_group_name}] -> ', nl=False)
         deployment_group = code_deploy_client.get_deployment_group(
             application_name=application.application_name, deployment_group_name=deployment_group_name
         )
-        click.secho(f'{deployment_group.deployment_group_id}')
+        click.secho(f'{deployment_group.deployment_group_id}', fg='green')
 
+        # fetch application revision
         click.secho(f'Fetching application_revision [application_name={application_name}, deployment_group_name={deployment_group_name}] -> ', nl=False)  # noqa: E501
         application_revision = code_deploy_client.get_application_revision(
             application_name=application.application_name, deployment_group=deployment_group
         )
         if application_revision:
-            click.secho(f'[RevisionType={application_revision.revision.revision_type}]')
+            click.secho(f'[RevisionType={application_revision.revision.revision_type}]', fg='green')
         else:
-            click.secho('Not Found!')
+            click.secho('Not Found!', fg='red')
 
-        # check task definition
-        if task_definition:
-            requested_task_definition_arn = task_definition
-            current_task_definition_arn = None
-        else:
-            click.secho('Task definition not present, fetching it -> ', nl=False)
-
-            if application_revision:
-                requested_task_definition_arn = application_revision.revision.get_task_definition()
-                current_task_definition_arn = requested_task_definition_arn
-                click.secho(f'{requested_task_definition_arn}')
+        # fetch task definition
+        if application_revision:
+            if task_definition:
+                requested_task_definition_arn = task_definition
+                current_task_definition_arn = application_revision.revision.get_task_definition()
             else:
-                click.secho('Not Found!')
-                raise CodeDeployError('Task definition not present, cannot continue! First deployment?')
+                click.secho('Task definition not present, fetching it -> ', nl=False)
+                requested_task_definition_arn = application_revision.revision.get_task_definition()
+                current_task_definition_arn = application_revision.revision.get_task_definition()
+                click.secho(f'{requested_task_definition_arn}', fg='green')
+        else:
+            if task_definition:
+                requested_task_definition_arn = task_definition
+                current_task_definition_arn = None
+            else:
+                click.secho('Task definition not present, fetching it -> ', nl=False)
+                requested_ecs_service = code_deploy_client.get_service(deployment_group=deployment_group)
+                current_task_definition_arn = requested_ecs_service.task_definition
+                last_task_definition = code_deploy_client.get_task_definition(
+                    task_definition_arn=current_task_definition_arn.rsplit(':', 1)[0]
+                )
+                requested_task_definition_arn = last_task_definition.arn
+                click.secho(f'{requested_task_definition_arn}', fg='green')
 
         requested_task_definition = code_deploy_client.get_task_definition(
             task_definition_arn=requested_task_definition_arn
         )
         click.secho(f"Requested task definition: '{requested_task_definition.arn}'")
 
+        # check module version
         if module_version:
             requested_module_version = module_version
         else:
             click.secho('ModuleVersion not present, fetching it -> ', nl=False)
             requested_module_version = requested_task_definition.get_tag('ModuleVersion')
-            click.secho(f'{requested_module_version}')
+            click.secho(f'{requested_module_version}', fg='green')
 
+        # fetch compatible task definition
         if requested_module_version:
             click.secho(f"Requested ModuleVersion: '{requested_module_version}'")
             selected_task_definition = code_deploy_client.get_task_definition_filtered(
@@ -93,52 +106,52 @@ def deploy(ctx, application_name, deployment_group_name, task_definition, module
             click.secho('ModuleVersion not present, skipping it')
             selected_task_definition = requested_task_definition
 
-        click.secho(f"Using [task='{selected_task_definition.arn}', ModuleVersion='{selected_task_definition.get_tag('ModuleVersion')}']")  # noqa: E501
-        application_revision.set_task_definition(new_task_definition=selected_task_definition)
-
-        # update selected task definition
-        selected_task_definition.set_images(tag=tag_only)
-        selected_task_definition.set_tag('Terraform', 'false')
+        # selected tag
+        if tag_only:
+            selected_tag = tag_only
+        else:
+            selected_tag = list(selected_task_definition.images)[0][1].rsplit(':', 1)[1]
 
         if skip_latest_tag:
-            current_task_definition = code_deploy_client.get_task_definition(
-                task_definition_arn=current_task_definition_arn
-            )
-            current_images = {container: image for container, image in current_task_definition.images}
+            if 'latest' == selected_tag:
+                current_task_definition = code_deploy_client.get_task_definition(
+                    task_definition_arn=current_task_definition_arn
+                )
+                selected_tag = list(current_task_definition.images)[0][1].rsplit(':', 1)[1]
 
-            for container_name, image in selected_task_definition.images:
-                image_tag = image.rsplit(':', 1)[1]
-                if image_tag == 'latest':
-                    current_image = current_images[container_name]
-                    current_tag = current_image.rsplit(':', 1)[1]
+                if 'latest' == selected_tag:
+                    raise CodeDeployError('Cannot find valid tag')
 
-                    if current_tag != 'latest':
-                        click.secho(f'Replace "latest" tag for "{container_name}" image with "{current_tag}"')
-                        selected_task_definition.set_images(**{container_name: current_image})
-                    else:
-                        raise CodeDeployError(f'Cannot replace "latest" tag for "{container_name}"')
+        selected_task_definition.set_images(tag=selected_tag)
 
         if selected_task_definition.updated:
+            selected_task_definition.set_tag('Terraform', 'false')
             selected_task_definition.show_diff(show_diff=show_diff)
 
-            click.secho('Creating new task definition revision')
-
+            click.secho('Creating new task definition revision -> ', nl=False)
             new_task_definition = code_deploy_client.register_task_definition(task_definition=selected_task_definition)
+            click.secho(f'{new_task_definition.revision}', fg='green')
+        else:
+            click.secho('No changes required, task definition is up to date!', fg='green')
+            new_task_definition = selected_task_definition
+
+        if application_revision:
             application_revision.set_task_definition(new_task_definition=new_task_definition)
 
-            click.secho(f'Successfully created new task definition revision: {new_task_definition.revision}', fg='green')  # noqa: E501
+            if application_revision.updated:
+                application_revision.show_diff(show_diff=show_diff)
 
-        # update application revision
-        if application_revision.updated:
-            application_revision.show_diff(show_diff=show_diff)
+            new_revision = application_revision.revision
+        else:
+            new_revision = code_deploy_client.create_new_revision(task_definition=new_task_definition)
 
         # Deployment
         click.secho('Deploying new application revision', nl=False)
 
         deployment = code_deploy_client.create_deployment(
-            application_name=application.application_name,
-            deployment_group_name=deployment_group.deployment_group_name,
-            revision=application_revision.revision
+            application_name=application_name,
+            deployment_group_name=deployment_group_name,
+            revision=new_revision
         )
 
         wait_for_finish(

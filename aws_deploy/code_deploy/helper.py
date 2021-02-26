@@ -9,7 +9,7 @@ from boto3_type_annotations import ecs
 from boto3_type_annotations import resourcegroupstaggingapi
 from botocore.exceptions import ClientError
 
-from aws_deploy.ecs.helper import EcsTaskDefinition
+from aws_deploy.ecs.helper import EcsTaskDefinition, EcsService
 
 
 class Diff:
@@ -30,12 +30,18 @@ class CodeDeployApplication:
 
 class CodeDeployDeploymentGroup:
     def __init__(self, applicationName, deploymentGroupId, deploymentGroupName, deploymentConfigName,
-                 targetRevision=None, **kwargs):
+                 targetRevision=None, ecsServices=None, **kwargs):
         self.application_name = applicationName
         self.deployment_group_id = deploymentGroupId
         self.deployment_group_name = deploymentGroupName
         self.deployment_config_name = deploymentConfigName
         self.target_revision = targetRevision
+        self.cluster_name = None
+        self.ecs_service_name = None
+
+        if ecsServices:
+            self.cluster_name = ecsServices[0]['clusterName']
+            self.ecs_service_name = ecsServices[0]['serviceName']
 
 
 class CodeDeployString:
@@ -349,6 +355,17 @@ class CodeDeployClient:
 
         raise UnknownTaskDefinitionError(f'Task not found [Family={family}, ModuleVersion={module_version}]')
 
+    def get_service(self, deployment_group: CodeDeployDeploymentGroup) -> EcsService:
+        services_payload = self._ecs.describe_services(
+            cluster=deployment_group.cluster_name,
+            services=[deployment_group.ecs_service_name]
+        )
+
+        return EcsService(
+            cluster=deployment_group.cluster_name,
+            service_definition=services_payload['services'][0]
+        )
+
     def get_task_definition(self, task_definition_arn: str) -> EcsTaskDefinition:
         try:
             task_definition_payload = self._ecs.describe_task_definition(
@@ -404,6 +421,34 @@ class CodeDeployClient:
     def deregister_task_definition(self, task_definition_arn: str):
         return self._ecs.deregister_task_definition(
             taskDefinition=task_definition_arn
+        )
+
+    def create_new_revision(self, task_definition: EcsTaskDefinition):
+        container = task_definition.containers[0]
+        container_name = container['name']
+        container_port = container['portMappings'][0]['containerPort']
+
+        app_spec_content = {
+            "Resources": [
+                {
+                    "TargetService": {
+                        "Type": "AWS::ECS::Service",
+                        "Properties": {
+                            "TaskDefinition": task_definition.arn,
+                            "LoadBalancerInfo": {
+                                "ContainerName": container_name,
+                                "ContainerPort": container_port
+                            },
+                            "PlatformVersion": None
+                        }
+                    }
+                }
+            ]
+        }
+
+        return CodeDeployRevision(
+            revisionType='AppSpecContent',
+            appSpecContent={'content': json.dumps(app_spec_content, separators=(',', ':'))}
         )
 
 
