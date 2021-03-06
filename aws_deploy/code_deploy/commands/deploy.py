@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from distutils.util import strtobool
 from time import sleep
 from typing import Callable
 
@@ -11,17 +12,13 @@ from aws_deploy.code_deploy.helper import CodeDeployError, CodeDeployDeployment
 @code_deploy_cli.command()
 @click.argument('application-name')
 @click.argument('deployment-group-name')
-@click.option('--task-definition', type=str, help='Task definition to be deployed. Can be a task ARN or a task family with optional revision')  # noqa: E501
 @click.option('--module-version', type=str, help='Module version to be deployed')
 @click.option('--tag-only', help='New tag to apply to ALL images defined in the task (multi-container task). If provided this will override value specified in image name argument.')  # noqa: E501
 @click.option('--timeout', default=600, type=int, show_default=True, help='Amount of seconds to wait for deployment before command fails. To disable timeout (fire and forget) set to -1.')  # noqa: E501
 @click.option('--sleep-time', default=1, type=int, show_default=True, help='Amount of seconds to wait between each check of the service.')  # noqa: E501
 @click.option('--deregister/--no-deregister', default=False, show_default=True, help='Deregister or keep the old task definition.')  # noqa: E501
-@click.option('--skip-latest-tag', is_flag=True, default=True, show_default=True, help='Skip images with latest tag.')  # noqa: E501
-@click.option('--show-diff/--no-diff', default=True, show_default=True, help='Print which values were changed in the task definition')  # noqa: E501
 @click.pass_context
-def deploy(ctx, application_name, deployment_group_name, task_definition, module_version, tag_only, timeout, sleep_time,
-           deregister, skip_latest_tag, show_diff):
+def deploy(ctx, application_name, deployment_group_name, module_version, tag_only, timeout, sleep_time, deregister):
     """
     Deploys an application revision through the specified deployment group.
 
@@ -49,39 +46,15 @@ def deploy(ctx, application_name, deployment_group_name, task_definition, module
         )
         click.secho(f'{deployment_group.deployment_group_id}', fg='green')
 
-        # fetch application revision
-        click.secho(f'Fetching application_revision [application_name={application_name}, deployment_group_name={deployment_group_name}] -> ', nl=False)  # noqa: E501
-        application_revision = code_deploy_client.get_application_revision(
-            application_name=application.application_name, deployment_group=deployment_group
-        )
-        if application_revision:
-            click.secho(f'[RevisionType={application_revision.revision.revision_type}]', fg='green')
-        else:
-            click.secho('Not Found!', fg='red')
-
         # fetch task definition
-        if application_revision:
-            if task_definition:
-                requested_task_definition_arn = task_definition
-                current_task_definition_arn = application_revision.revision.get_task_definition()
-            else:
-                click.secho('Task definition not present, fetching it -> ', nl=False)
-                requested_task_definition_arn = application_revision.revision.get_task_definition()
-                current_task_definition_arn = application_revision.revision.get_task_definition()
-                click.secho(f'{requested_task_definition_arn}', fg='green')
-        else:
-            if task_definition:
-                requested_task_definition_arn = task_definition
-                current_task_definition_arn = None
-            else:
-                click.secho('Task definition not present, fetching it -> ', nl=False)
-                requested_ecs_service = code_deploy_client.get_service(deployment_group=deployment_group)
-                current_task_definition_arn = requested_ecs_service.task_definition
-                last_task_definition = code_deploy_client.get_task_definition(
-                    task_definition_arn=current_task_definition_arn.rsplit(':', 1)[0]
-                )
-                requested_task_definition_arn = last_task_definition.arn
-                click.secho(f'{requested_task_definition_arn}', fg='green')
+        requested_ecs_service = code_deploy_client.get_service(deployment_group=deployment_group)
+        click.secho(f'Fetching task definition [service_name={requested_ecs_service.name}]-> ', nl=False)
+        current_task_definition_arn = requested_ecs_service.task_definition
+        last_task_definition = code_deploy_client.get_task_definition(
+            task_definition_arn=current_task_definition_arn.rsplit(':', 1)[0]
+        )
+        requested_task_definition_arn = last_task_definition.arn
+        click.secho(f'{requested_task_definition_arn}', fg='green')
 
         requested_task_definition = code_deploy_client.get_task_definition(
             task_definition_arn=requested_task_definition_arn
@@ -93,7 +66,10 @@ def deploy(ctx, application_name, deployment_group_name, task_definition, module
             requested_module_version = module_version
         else:
             click.secho('ModuleVersion not present, fetching it -> ', nl=False)
-            requested_module_version = requested_task_definition.get_tag('ModuleVersion')
+            current_task_definition = code_deploy_client.get_task_definition(
+                task_definition_arn=current_task_definition_arn
+            )
+            requested_module_version = current_task_definition.get_tag('ModuleVersion')
             click.secho(f'{requested_module_version}', fg='green')
 
         # fetch compatible task definition
@@ -105,6 +81,7 @@ def deploy(ctx, application_name, deployment_group_name, task_definition, module
         else:
             click.secho('ModuleVersion not present, skipping it')
             selected_task_definition = requested_task_definition
+        click.secho(f"Selected task definition: '{selected_task_definition.arn}'")
 
         # selected tag
         if tag_only:
@@ -112,21 +89,21 @@ def deploy(ctx, application_name, deployment_group_name, task_definition, module
         else:
             selected_tag = list(selected_task_definition.images)[0][1].rsplit(':', 1)[1]
 
-        if skip_latest_tag:
-            if 'latest' == selected_tag:
-                current_task_definition = code_deploy_client.get_task_definition(
-                    task_definition_arn=current_task_definition_arn
-                )
-                selected_tag = list(current_task_definition.images)[0][1].rsplit(':', 1)[1]
+        # skip latest tag
+        if 'latest' in selected_tag:
+            current_task_definition = code_deploy_client.get_task_definition(
+                task_definition_arn=current_task_definition_arn
+            )
+            selected_tag = list(current_task_definition.images)[0][1].rsplit(':', 1)[1]
 
-                if 'latest' == selected_tag:
-                    raise CodeDeployError('Cannot find valid tag')
-
+            if 'latest' in selected_tag:
+                raise CodeDeployError('Cannot find valid tag')
         selected_task_definition.set_images(tag=selected_tag)
 
         if selected_task_definition.updated:
             selected_task_definition.set_tag('Terraform', 'false')
-            selected_task_definition.show_diff(show_diff=show_diff)
+            selected_task_definition.set_tag('ImageTag', selected_tag)
+            selected_task_definition.show_diff(show_diff=True)
 
             click.secho('Creating new task definition revision -> ', nl=False)
             new_task_definition = code_deploy_client.register_task_definition(task_definition=selected_task_definition)
@@ -135,15 +112,7 @@ def deploy(ctx, application_name, deployment_group_name, task_definition, module
             click.secho('No changes required, task definition is up to date!', fg='green')
             new_task_definition = selected_task_definition
 
-        if application_revision:
-            application_revision.set_task_definition(new_task_definition=new_task_definition)
-
-            if application_revision.updated:
-                application_revision.show_diff(show_diff=show_diff)
-
-            new_revision = application_revision.revision
-        else:
-            new_revision = code_deploy_client.create_new_revision(task_definition=new_task_definition)
+        new_revision = code_deploy_client.create_new_revision(task_definition=new_task_definition)
 
         # Deployment
         click.secho('Deploying new application revision', nl=False)
@@ -160,13 +129,20 @@ def deploy(ctx, application_name, deployment_group_name, task_definition, module
             sleep_time=sleep_time
         )
 
-        # TODO define which task we want to deregister
-        # if deregister and task_definition.updated:
-        #     click.secho(f'Deregister task definition revision: {task_definition.revision}')
-        #
-        #     code_deploy_client.deregister_task_definition(task_definition.arn)
-        #
-        #     click.secho(f'Successfully deregistered revision: {task_definition.revision}', fg='green')
+        if deregister:
+            keep_count = 3
+            click.secho(f'Deregister old task definitions, keeping last {keep_count}', fg='blue')
+            tasks_definition = code_deploy_client.get_last_tasks_definition(
+                family=new_task_definition.family, count=10
+            )
+            tasks_definition = list(filter(
+                lambda x: not strtobool(x.get_tag('Terraform')),
+                tasks_definition
+            ))[keep_count:]
+
+            for task_definition in tasks_definition:
+                click.secho(f'Deregister task definition revision: {task_definition.revision}', fg='red')
+                code_deploy_client.deregister_task_definition(task_definition.arn)
 
     except CodeDeployError as e:
         click.secho(str(e), fg='red', err=True)

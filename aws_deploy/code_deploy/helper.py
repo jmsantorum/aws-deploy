@@ -355,6 +355,25 @@ class CodeDeployClient:
 
         raise UnknownTaskDefinitionError(f'Task not found [Family={family}, ModuleVersion={module_version}]')
 
+    def get_last_tasks_definition(self, family: str, count: int = 1) -> List[EcsTaskDefinition]:
+        response_payload = self._ecs.list_task_definitions(
+            familyPrefix=family,
+            status='ACTIVE',
+            sort='DESC',
+            maxResults=count
+        )
+
+        task_definition_arns = response_payload['taskDefinitionArns']
+
+        if len(task_definition_arns) > 0:
+            return list(
+                map(
+                    lambda task_definition_arn: self.get_task_definition(task_definition_arn), task_definition_arns
+                )
+            )
+
+        raise UnknownTaskDefinitionError(f'Task definition not found [Family={family}]')
+
     def get_service(self, deployment_group: CodeDeployDeploymentGroup) -> EcsService:
         services_payload = self._ecs.describe_services(
             cluster=deployment_group.cluster_name,
@@ -383,16 +402,22 @@ class CodeDeployClient:
 
     def create_deployment(self, application_name: str, deployment_group_name: str,
                           revision: CodeDeployRevision) -> CodeDeployDeployment:  # noqa: E501
-        deployment_payload = self._code_deploy.create_deployment(
-            applicationName=application_name,
-            deploymentGroupName=deployment_group_name,
-            revision=revision.to_dict()
-        )
+        try:
+            deployment_payload = self._code_deploy.create_deployment(
+                applicationName=application_name,
+                deploymentGroupName=deployment_group_name,
+                revision=revision.to_dict()
+            )
 
-        return CodeDeployDeployment(
-            deploymentId=deployment_payload['deploymentId'],
-            applicationName=None, deploymentGroupName=None, deploymentConfigName=None, revision=None, status=None
-        )
+            return CodeDeployDeployment(
+                deploymentId=deployment_payload['deploymentId'],
+                applicationName=None, deploymentGroupName=None, deploymentConfigName=None, revision=None, status=None
+            )
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'DeploymentLimitExceededException':
+                click.secho('There is an active deployment, waiting...')
+                # TODO
+            raise e
 
     def get_deployment(self, deployment_id: str) -> CodeDeployDeployment:
         deployment_payload = self._code_deploy.get_deployment(

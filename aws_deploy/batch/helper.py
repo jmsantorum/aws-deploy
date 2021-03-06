@@ -1,3 +1,5 @@
+from typing import List
+
 import click
 from boto3 import Session
 from boto3_type_annotations import batch
@@ -37,6 +39,9 @@ class BatchJobDefinition:
             click.secho('')
 
             self.container_properties.show_diff(show_diff=show_diff)
+
+    def get_tag(self, key):
+        return self.tags.get(key, None)
 
     def set_tag(self, key: str, value: str):
         if key and value:
@@ -125,7 +130,7 @@ class BatchClient:
 
         raise UnknownJobDefinitionError(f'Job definition not found [Name={job_definition_name}]')
 
-    def get_last_job_definition(self, job_definition_name: str) -> BatchJobDefinition:
+    def get_last_jobs_definition(self, job_definition_name: str, count: int = 1) -> List[BatchJobDefinition]:
         def filter_latest_tag(definition):
             container_properties = definition['containerProperties']
             image = container_properties['image']
@@ -147,13 +152,10 @@ class BatchClient:
             job_definitions,
             key=lambda x: x['revision'],
             reverse=True
-        )
+        )[:count]
 
         if len(job_definitions) > 0:
-            # Fetch last active revision
-            return BatchJobDefinition(
-                **job_definitions[0]
-            )
+            return list(map(lambda job_definition: BatchJobDefinition(**job_definition), job_definitions))
 
         raise UnknownJobDefinitionError(f'Job definition not found [Name={job_definition_name}]')
 
