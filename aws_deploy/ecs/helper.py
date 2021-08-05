@@ -6,6 +6,7 @@ from json.decoder import JSONDecodeError
 import click
 from boto3.session import Session
 from boto3_type_annotations.ecs import Client
+from boto3_type_annotations import resourcegroupstaggingapi
 from botocore.exceptions import ClientError, NoCredentialsError
 from dateutil.tz.tz import tzlocal
 from dictdiffer import diff
@@ -43,12 +44,59 @@ class EcsClient(object):
 
         self.boto: Client = session.client('ecs')
         self.events = session.client('events')
+        self._resource_tagging: resourcegroupstaggingapi.Client = session.client('resourcegroupstaggingapi')
 
     def describe_services(self, cluster_name, service_name):
         return self.boto.describe_services(
             cluster=cluster_name,
             services=[service_name]
         )
+
+    def get_task_definition(self, task_definition_arn: str):
+        try:
+            task_definition_payload = self.boto.describe_task_definition(
+                taskDefinition=task_definition_arn,
+                include=[
+                    'TAGS',
+                ]
+            )
+
+            return EcsTaskDefinition(
+                tags=task_definition_payload.get('tags', None), **task_definition_payload['taskDefinition']
+            )
+        except ClientError as e:
+            raise UnknownTaskDefinitionError(str(e))
+
+    def get_task_definition_filtered(self, family: str, module_version: str):
+        click.secho(f'Required Task [Family={family}, ModuleVersion={module_version}]')
+        mayor_minor_version, patch_version = module_version.rsplit('.', 1)
+
+        compatible_module_versions = [
+            f'{mayor_minor_version}.{next_patch_version}'
+            for next_patch_version in range(int(patch_version), int(patch_version) + 10)
+        ]
+
+        response_payload = self._resource_tagging.get_resources(
+            ResourceTypeFilters=['ecs:task-definition'],
+            TagFilters=[
+                {'Key': 'Family', 'Values': [family]},
+                {'Key': 'ModuleVersion', 'Values': compatible_module_versions}
+            ]
+        )
+
+        task_definition_arns = sorted(
+            [item['ResourceARN'] for item in response_payload['ResourceTagMappingList']],
+            key=lambda x: int(x.rsplit(':', 1)[1]),  # sort by (int) version
+            reverse=True
+        )
+
+        if task_definition_arns:
+            task_definition = self.get_task_definition(task_definition_arn=task_definition_arns[0])
+            module_version = task_definition.get_tag('ModuleVersion')
+            click.secho(f'Found Task [Family={family}, ModuleVersion={module_version}]')
+            return self.get_task_definition(task_definition_arn=task_definition_arns[0])
+
+        raise UnknownTaskDefinitionError(f'Task not found [Family={family}, ModuleVersion={module_version}]')
 
     def describe_task_definition(self, task_definition_arn):
         try:
@@ -231,7 +279,7 @@ class EcsTaskDefinition(object):
         self.role_arn = taskRoleArn or ''
         self.execution_role_arn = executionRoleArn or ''
         self.tags = tags
-        self.additional_properties = kwargs
+        self.additional_properties = {k: v for k,v in kwargs.items() if k not in ("registeredAt", "registeredBy")}
         self._diff = []
 
         # the compatibilities parameter is returned from the ECS API, when
