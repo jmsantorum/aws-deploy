@@ -1,4 +1,4 @@
-FROM python:3.8-alpine AS base
+FROM python:3.9-alpine AS base
 
 RUN apk --no-cache --update add jq curl
 RUN pip install awscli pipenv
